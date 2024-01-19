@@ -14,11 +14,24 @@ use {
     },
 };
 
+pub fn unpack_u64(input: &[u8]) -> Result<u64, ProgramError> {
+    if input.len() != 8 {
+        msg!("u64 cannot be unpacked");
+        return Err(ProgramError::InvalidInstructionData);
+    }
+    let value = input
+        .get(..8)
+        .and_then(|slice| slice.try_into().ok())
+        .map(u64::from_le_bytes)
+        .ok_or(ProgramError::InvalidInstructionData)?;
+    Ok(value)
+}
+
 solana_program::entrypoint!(process_instruction);
 pub fn process_instruction(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    _instruction_data: &[u8],
+    instruction_data: &[u8],
 ) -> ProgramResult {
     // Create an iterator to safely reference accounts in the slice
     let account_info_iter = &mut accounts.iter();
@@ -40,7 +53,11 @@ pub fn process_instruction(
     // The program transfers everything out of its account, so extract that from
     // the account data.
     let source_account = Account::unpack(&source_info.try_borrow_data()?)?;
-    let amount = source_account.amount;
+
+    let mut amount = unpack_u64(instruction_data)?;
+    if amount  > source_account.amount {
+        amount = source_account.amount;
+    }
 
     // The program uses `transfer_checked`, which requires the number of decimals
     // in the mint, so extract that from the account data too.
